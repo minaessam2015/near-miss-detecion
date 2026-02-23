@@ -117,6 +117,14 @@ _FONT = cv2.FONT_HERSHEY_SIMPLEX
 _FONT_BOLD = cv2.FONT_HERSHEY_DUPLEX
 
 
+def _fmt_score(score: Any, ndigits: int = 2) -> str:
+    """Format risk score for overlays; returns 'N/A' when unavailable."""
+    try:
+        return f"{float(score):.{ndigits}f}"
+    except (TypeError, ValueError):
+        return "N/A"
+
+
 def _label_bg(
     img: np.ndarray,
     x: int,
@@ -255,12 +263,13 @@ def annotate_frame(
         c1 = tracked_objects[id1]["center"]
         c2 = tracked_objects[id2]["center"]
         risk   = ev.get("risk_level", "Low")
+        score  = ev.get("risk_score", None)
         rcolor = _RISK_COLORS.get(risk, _COLOR_NEARMISS)
         _draw_connector(out, c1, c2, rcolor, thickness=3, dash=20, gap=10)
 
         # Risk badge at midpoint
         mx, my = (c1[0] + c2[0]) // 2, (c1[1] + c2[1]) // 2
-        badge = risk.upper()
+        badge = f"{risk.upper()} S:{_fmt_score(score)}"
         (bw, bh), _ = cv2.getTextSize(badge, _FONT, 0.5, 1)
         cv2.rectangle(out, (mx - 4, my - bh - 4), (mx + bw + 4, my + 4), rcolor, -1)
         cv2.putText(out, badge, (mx, my), _FONT, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
@@ -366,7 +375,10 @@ def annotate_frame(
             partner = info["partner"]
             ttc     = info["ttc"]
             ttc_str = f"{ttc:.1f}s" if ttc is not None else "N/A"
-            line2   = f"-> #{partner}  TTC:{ttc_str}  {info['risk'].upper()}"
+            line2   = (
+                f"-> #{partner}  TTC:{ttc_str}  "
+                f"{info['risk'].upper()}  S:{_fmt_score(info.get('score'))}"
+            )
             h2 = _label_bg(out, x1, ly, line2,
                            font_scale=0.55, thickness=1, bg=info["color"])
             ly -= (h2 + 2)
@@ -397,12 +409,16 @@ def annotate_frame(
         py = 50
         for (id1, id2), ev in sorted_pairs:
             risk   = ev.get("risk_level", "Low")
+            score  = ev.get("risk_score", None)
             ttc    = ev.get("ttc_sec", None)
             dist   = ev.get("distance_px", None)
             ttc_s  = f"TTC:{ttc:.1f}s" if ttc is not None else "TTC:N/A"
             dist_s = f"  dist:{dist:.0f}px" if dist is not None else ""
             rcolor = _RISK_COLORS.get(risk, (255, 255, 255))
-            row    = f"  #{id1} <-> #{id2}   {ttc_s}{dist_s}   [{risk.upper()}]"
+            row    = (
+                f"  #{id1} <-> #{id2}   {ttc_s}{dist_s}   "
+                f"[{risk.upper()} S:{_fmt_score(score)}]"
+            )
             cv2.putText(out, row, (10, py), _FONT, 0.55, rcolor, 1, cv2.LINE_AA)
             py += 22
 

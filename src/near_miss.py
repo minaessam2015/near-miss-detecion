@@ -56,6 +56,8 @@ class NearMissDetector:
         same_direction_deg: float = 30.0,
         min_confidence: float = 0.5,
         moving_speed_px: float = 5.0,
+        risk_high_threshold: float = _RISK_HIGH,
+        risk_medium_threshold: float = _RISK_MEDIUM,
     ):
         """
         Args:
@@ -70,6 +72,9 @@ class NearMissDetector:
             min_confidence: Detection confidence gate.
             moving_speed_px: Minimum speed (px/processed-frame) to count as
                              "moving" in the 2-of-3 near-miss criteria gate.
+            risk_high_threshold: Risk-score cutoff for "High" severity.
+            risk_medium_threshold: Risk-score cutoff for "Medium" severity.
+                                   Scores below this are labeled "Low".
         """
         self.proximity_px = proximity_px
         self.ttc_threshold = ttc_threshold
@@ -81,6 +86,22 @@ class NearMissDetector:
         self.same_direction_deg = same_direction_deg
         self.min_confidence = min_confidence
         self.moving_speed_px = moving_speed_px
+        self.risk_high_threshold = float(risk_high_threshold)
+        self.risk_medium_threshold = float(risk_medium_threshold)
+
+        if not (0.0 <= self.risk_medium_threshold <= 1.0):
+            raise ValueError(
+                f"risk_medium_threshold must be in [0, 1], got {self.risk_medium_threshold}"
+            )
+        if not (0.0 <= self.risk_high_threshold <= 1.0):
+            raise ValueError(
+                f"risk_high_threshold must be in [0, 1], got {self.risk_high_threshold}"
+            )
+        if self.risk_high_threshold < self.risk_medium_threshold:
+            raise ValueError(
+                "risk_high_threshold must be >= risk_medium_threshold "
+                f"(got high={self.risk_high_threshold}, medium={self.risk_medium_threshold})"
+            )
 
         # (id1, id2) → frame index of last emitted event
         self._last_event_frame: Dict[Tuple[int, int], int] = {}
@@ -262,11 +283,10 @@ class NearMissDetector:
         )
         return round(min(max(score, 0.0), 1.0), 4)
 
-    @staticmethod
-    def _risk_level(score: float) -> str:
-        if score >= _RISK_HIGH:
+    def _risk_level(self, score: float) -> str:
+        if score >= self.risk_high_threshold:
             return "High"
-        if score >= _RISK_MEDIUM:
+        if score >= self.risk_medium_threshold:
             return "Medium"
         return "Low"
 
@@ -530,6 +550,8 @@ class NearMissDetectorV11(NearMissDetector):
         same_direction_deg:  float = 30.0,
         min_confidence:      float = 0.5,
         moving_speed_px:     float = 5.0,
+        risk_high_threshold: float = _RISK_HIGH,
+        risk_medium_threshold: float = _RISK_MEDIUM,
         # ── v1.1 additions ────────────────────────────────────────────────────
         proximity_scale: float = 0.5,
         min_iou:         float = 0.05,
@@ -581,6 +603,8 @@ class NearMissDetectorV11(NearMissDetector):
             same_direction_deg=same_direction_deg,
             min_confidence=min_confidence,
             moving_speed_px=moving_speed_px,
+            risk_high_threshold=risk_high_threshold,
+            risk_medium_threshold=risk_medium_threshold,
         )
         self.proximity_scale = proximity_scale
         self.min_iou         = min_iou
@@ -991,6 +1015,8 @@ class NearMissDetectorV20(NearMissDetectorV11):
         same_direction_deg:  float = 30.0,
         min_confidence:      float = 0.5,
         moving_speed_px:     float = 5.0,
+        risk_high_threshold: float = _RISK_HIGH,
+        risk_medium_threshold: float = _RISK_MEDIUM,
         proximity_scale:     float = 0.5,
         min_iou:             float = 0.05,
         buffer_decay:        float = 0.5,
@@ -1010,6 +1036,8 @@ class NearMissDetectorV20(NearMissDetectorV11):
             same_direction_deg=same_direction_deg,
             min_confidence=min_confidence,
             moving_speed_px=moving_speed_px,
+            risk_high_threshold=risk_high_threshold,
+            risk_medium_threshold=risk_medium_threshold,
             proximity_scale=proximity_scale,
             min_iou=min_iou,
             buffer_decay=buffer_decay,
@@ -1472,6 +1500,8 @@ class NearMissDetectorV40(NearMissDetectorV11):
         same_direction_deg:  float = 30.0,
         min_confidence:      float = 0.5,
         moving_speed_px:     float = 5.0,
+        risk_high_threshold: float = _RISK_HIGH,
+        risk_medium_threshold: float = _RISK_MEDIUM,
         proximity_scale:     float = 0.5,
         min_iou:             float = 0.05,
         buffer_decay:        float = 0.5,
@@ -1496,6 +1526,8 @@ class NearMissDetectorV40(NearMissDetectorV11):
             same_direction_deg=same_direction_deg,
             min_confidence=min_confidence,
             moving_speed_px=moving_speed_px,
+            risk_high_threshold=risk_high_threshold,
+            risk_medium_threshold=risk_medium_threshold,
             proximity_scale=proximity_scale,
             min_iou=min_iou,
             buffer_decay=buffer_decay,
