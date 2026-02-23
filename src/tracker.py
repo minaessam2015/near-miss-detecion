@@ -66,7 +66,45 @@ import importlib
 import logging
 
 import numpy as np
-from scipy.spatial.distance import cdist
+
+try:
+    from scipy.spatial.distance import cdist as _scipy_cdist
+except Exception:
+    _scipy_cdist = None
+
+
+def cdist(
+    xa: np.ndarray,
+    xb: np.ndarray,
+    metric: str = "euclidean",
+) -> np.ndarray:
+    """
+    Pairwise distance matrix with SciPy fast path and NumPy fallback.
+
+    Colab environments occasionally have transient NumPy/SciPy binary mismatch
+    after pip upgrades. Importing scipy can then fail before tracking starts.
+    This fallback keeps centroid matching functional without SciPy.
+    """
+    if metric != "euclidean":
+        raise ValueError(f"Only euclidean metric is supported, got: {metric}")
+
+    if _scipy_cdist is not None:
+        return _scipy_cdist(xa, xb, metric=metric)
+
+    a = np.asarray(xa, dtype=np.float64)
+    b = np.asarray(xb, dtype=np.float64)
+
+    if a.ndim != 2 or b.ndim != 2:
+        raise ValueError("cdist inputs must be 2-D arrays")
+    if a.shape[1] != b.shape[1]:
+        raise ValueError(
+            f"cdist feature dimensions differ: {a.shape[1]} vs {b.shape[1]}"
+        )
+    if a.shape[0] == 0 or b.shape[0] == 0:
+        return np.empty((a.shape[0], b.shape[0]), dtype=np.float64)
+
+    diff = a[:, None, :] - b[None, :, :]
+    return np.sqrt(np.sum(diff * diff, axis=2))
 
 _log = logging.getLogger("tracker.v2")
 
