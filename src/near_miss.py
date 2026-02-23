@@ -858,16 +858,16 @@ class NearMissDetectorV11(NearMissDetector):
                     fp1, fp2, speed1, speed2, h1, h2
                 )
 
+                max_speed = max(speed1, speed2)
                 risk_score = self._risk_score_v11(
-                    dist, t_star, d_min, max(speed1, speed2), eff_prox
+                    dist, t_star, d_min, max_speed, eff_prox
                 )
 
                 # ── Multi-criteria gate: 2 of 3 required ─────────────────────
-                criteria_met = sum([
-                    dist  < eff_prox,
-                    d_min < eff_prox,
-                    max(speed1, speed2) > self.moving_speed_px,
-                ])
+                criteria_dist = dist < eff_prox
+                criteria_dmin = d_min < eff_prox
+                criteria_motion = max_speed > self.moving_speed_px
+                criteria_met = sum([criteria_dist, criteria_dmin, criteria_motion])
                 if criteria_met < 2:
                     self._leak_buffer(pair_key)                          # #6
                     continue
@@ -882,6 +882,7 @@ class NearMissDetectorV11(NearMissDetector):
                 # ── Size-aware closest-approach guard ────────────────────────
                 # Prevents false positives for adjacent-lane trajectories that
                 # remain well-separated even though pixel distance < eff_prox.
+                clearance_px = None
                 if iou <= self.min_iou:
                     clearance_px = self._clearance_threshold_px(obj1, obj2, eff_prox)
                     if d_min > clearance_px:
@@ -930,6 +931,19 @@ class NearMissDetectorV11(NearMissDetector):
                     "risk_level":    self._risk_level(risk_score),
                     "conf_1":        round(obj1["confidence"], 3),
                     "conf_2":        round(obj2["confidence"], 3),
+                    "speed_1_px":    round(speed1, 2),
+                    "speed_2_px":    round(speed2, 2),
+                    "eff_prox_px":   round(eff_prox, 2),
+                    "iou":           round(iou, 4),
+                    "criteria_dist": criteria_dist,
+                    "criteria_dmin": criteria_dmin,
+                    "criteria_motion": criteria_motion,
+                    "criteria_count": int(criteria_met),
+                    "moving_speed_px_th": round(self.moving_speed_px, 3),
+                    "converging":    bool(converging),
+                    "proximate_by_iou": bool(iou > self.min_iou),
+                    "min_iou_th":    round(self.min_iou, 4),
+                    "clearance_px":  round(clearance_px, 2) if clearance_px is not None else None,
                 }
                 self._events.append(event)
                 self._last_event_frame[pair_key] = frame_idx
@@ -1809,16 +1823,16 @@ class NearMissDetectorV40(NearMissDetectorV11):
                     fp1, fp2, spd1, spd2, h1, h2
                 )
 
+                max_speed = max(spd1, spd2)
                 risk_score = self._risk_score_v11(
-                    dist, t_star, d_min, max(spd1, spd2), eff_prox
+                    dist, t_star, d_min, max_speed, eff_prox
                 )
 
                 # ── Multi-criteria gate (2 of 3) ──────────────────────────────
-                criteria_met = sum([
-                    dist  < eff_prox,
-                    d_min < eff_prox,
-                    max(spd1, spd2) > self.moving_speed_px,
-                ])
+                criteria_dist = dist < eff_prox
+                criteria_dmin = d_min < eff_prox
+                criteria_motion = max_speed > self.moving_speed_px
+                criteria_met = sum([criteria_dist, criteria_dmin, criteria_motion])
                 if criteria_met < 2:
                     self._leak_buffer(pair_key)
                     continue
@@ -1833,6 +1847,7 @@ class NearMissDetectorV40(NearMissDetectorV11):
                     continue
 
                 # ── Size-aware closest-approach guard (adjacent-lane suppressor)
+                clearance_px = None
                 if iou <= self.min_iou:
                     clearance_px = self._clearance_threshold_px(obj1, obj2, eff_prox)
                     if d_min > clearance_px:
@@ -1912,6 +1927,17 @@ class NearMissDetectorV40(NearMissDetectorV11):
                     "speed_1_px":        round(spd1, 2),
                     "speed_2_px":        round(spd2, 2),
                     "optical_flow_used": flow is not None,
+                    "eff_prox_px":       round(eff_prox, 2),
+                    "iou":               round(iou, 4),
+                    "criteria_dist":     criteria_dist,
+                    "criteria_dmin":     criteria_dmin,
+                    "criteria_motion":   criteria_motion,
+                    "criteria_count":    int(criteria_met),
+                    "moving_speed_px_th": round(self.moving_speed_px, 3),
+                    "converging":        bool(converging),
+                    "proximate_by_iou":  bool(iou > self.min_iou),
+                    "min_iou_th":        round(self.min_iou, 4),
+                    "clearance_px":      round(clearance_px, 2) if clearance_px is not None else None,
                 }
                 self._events.append(event)
                 self._last_event_frame[pair_key] = frame_idx

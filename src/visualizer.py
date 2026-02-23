@@ -178,6 +178,46 @@ def _draw_connector(
         pos += dash + gap
 
 
+def _draw_dashed_rect(
+    img: np.ndarray,
+    bbox: Tuple[int, int, int, int],
+    color: Tuple[int, int, int],
+    thickness: int = 2,
+    dash: int = 8,
+    gap: int = 5,
+) -> None:
+    """Draw a dashed rectangle."""
+    x1, y1, x2, y2 = bbox
+    _draw_connector(img, (x1, y1), (x2, y1), color, thickness, dash, gap)
+    _draw_connector(img, (x2, y1), (x2, y2), color, thickness, dash, gap)
+    _draw_connector(img, (x2, y2), (x1, y2), color, thickness, dash, gap)
+    _draw_connector(img, (x1, y2), (x1, y1), color, thickness, dash, gap)
+
+
+def _shift_bbox(
+    bbox: Tuple[int, int, int, int],
+    dx: float,
+    dy: float,
+    w: int,
+    h: int,
+) -> Tuple[int, int, int, int]:
+    """Translate bbox by (dx, dy) and clamp to image boundaries."""
+    x1, y1, x2, y2 = bbox
+    nx1 = int(round(x1 + dx))
+    ny1 = int(round(y1 + dy))
+    nx2 = int(round(x2 + dx))
+    ny2 = int(round(y2 + dy))
+    nx1 = max(0, min(w - 1, nx1))
+    ny1 = max(0, min(h - 1, ny1))
+    nx2 = max(0, min(w - 1, nx2))
+    ny2 = max(0, min(h - 1, ny2))
+    if nx2 <= nx1:
+        nx2 = min(w - 1, nx1 + 1)
+    if ny2 <= ny1:
+        ny2 = min(h - 1, ny1 + 1)
+    return nx1, ny1, nx2, ny2
+
+
 # ---------------------------------------------------------------------------
 # Frame annotation — main function
 # ---------------------------------------------------------------------------
@@ -193,6 +233,8 @@ def annotate_frame(
     pred_horizon_sec: float = 1.5,
     pred_step_sec: float = 0.25,
     pred_min_speed_px: float = 1.0,
+    explain_near_miss: bool = True,
+    explain_horizon_sec: float = 1.5,
 ) -> np.ndarray:
     """
     Draw bounding boxes, IDs, and near-miss overlays on a copy of the frame.
@@ -213,6 +255,9 @@ def annotate_frame(
         pred_horizon_sec: Prediction horizon in seconds.
         pred_step_sec:    Sampling step (sec) along the future path.
         pred_min_speed_px:Minimum speed (px/processed-frame) to draw prediction.
+        explain_near_miss:Draw interpretability overlays for near-miss objects:
+                          dashed future bbox only.
+        explain_horizon_sec:Max seconds ahead for dashed future bbox.
 
     Returns:
         Annotated BGR frame.
@@ -273,7 +318,6 @@ def annotate_frame(
         (bw, bh), _ = cv2.getTextSize(badge, _FONT, 0.5, 1)
         cv2.rectangle(out, (mx - 4, my - bh - 4), (mx + bw + 4, my + 4), rcolor, -1)
         cv2.putText(out, badge, (mx, my), _FONT, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-
     # ── Phase 2: boxes and labels ────────────────────────────────────────────
     for obj_id, obj in tracked_objects.items():
         x1, y1, x2, y2 = obj["bbox"]
@@ -367,6 +411,32 @@ def annotate_frame(
                                 thickness=3, line_type=cv2.LINE_AA, tipLength=0.40)
                 cv2.circle(out, (cx_now, cy_now), 4, _HDG_COLOR, -1, cv2.LINE_AA)
 
+        # ── Explain near-miss: dashed future state bbox ──────────────────────
+        if explain_near_miss and is_nm and info and fps > 0:
+            vel = _velocity_px_per_processed_frame(clean_traj, window=5)
+            if vel is not None:
+                vx_pf, vy_pf = vel
+                spd_pf = math.hypot(vx_pf, vy_pf)
+                if spd_pf >= pred_min_speed_px:
+                    ttc_raw = info.get("ttc")
+                    try:
+                        ttc = float(ttc_raw) if ttc_raw is not None else None
+                    except (TypeError, ValueError):
+                        ttc = None
+                    if ttc is None or not math.isfinite(ttc):
+                        t_sec = min(float(explain_horizon_sec), 1.0)
+                    else:
+                        t_sec = max(0.1, min(ttc, float(explain_horizon_sec)))
+                    dt_pf = t_sec * fps
+                    dx = vx_pf * dt_pf
+                    dy = vy_pf * dt_pf
+                    fbbox = _shift_bbox((x1, y1, x2, y2), dx, dy, w_frame, h_frame)
+                    _draw_dashed_rect(out, fbbox, box_color, thickness=2, dash=9, gap=5)
+                    fut_cx = int(round(cx_now + dx))
+                    fut_cy = int(round(cy_now + dy))
+                    _draw_connector(out, (cx_now, cy_now), (fut_cx, fut_cy),
+                                    box_color, thickness=1, dash=8, gap=6)
+
         # Labels — stack upward from just above the top-left corner
         ly = max(y1 - 4, 18)   # baseline of the lowest label line
 
@@ -447,6 +517,8 @@ def create_annotated_video(
     pred_horizon_sec: float = 1.5,
     pred_step_sec: float = 0.25,
     pred_min_speed_px: float = 1.0,
+    explain_near_miss: bool = True,
+    explain_horizon_sec: float = 1.5,
 ) -> None:
     """
     Write an annotated video to disk.
@@ -463,6 +535,8 @@ def create_annotated_video(
         pred_horizon_sec: Prediction horizon (sec) for debug path.
         pred_step_sec:    Time step (sec) between predicted samples.
         pred_min_speed_px:Minimum speed (px/processed-frame) to draw prediction.
+        explain_near_miss:Draw near-miss interpretability overlay.
+        explain_horizon_sec:Max seconds ahead for dashed future bbox.
     """
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
@@ -490,6 +564,8 @@ def create_annotated_video(
                 pred_horizon_sec=pred_horizon_sec,
                 pred_step_sec=pred_step_sec,
                 pred_min_speed_px=pred_min_speed_px,
+                explain_near_miss=explain_near_miss,
+                explain_horizon_sec=explain_horizon_sec,
             )
         else:
             annotated = frame
