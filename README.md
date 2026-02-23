@@ -2,6 +2,9 @@
 
 CPU-first computer-vision pipeline for detecting and analyzing traffic near-miss events from monocular video.
 
+[![Open near_miss_detection_demo.ipynb in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/minaessam2015/near-miss-detecion/blob/main/notebooks/near_miss_detection_demo.ipynb)
+[![Open local_test.ipynb in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/minaessam2015/near-miss-detecion/blob/main/notebooks/local_test.ipynb)
+
 ## What This Project Contains
 
 - Detection layer with multiple model backends
